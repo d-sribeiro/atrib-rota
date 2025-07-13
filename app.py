@@ -72,7 +72,7 @@ if st.button("Executar atribuição automática"):
     # padroniza nomes de colunas
     if 'ID de Unidad' in df_plan.columns:
         df_plan = df_plan.rename(columns={'ID de Unidad': 'Shipment'})
-    plan_cols = ['Shipment', 'Rua', 'Numero', 'Bairro', 'Cidade', 'Estado', 'CEP', 'Latitude', 'Longitude']
+    plan_cols = ['Shipment', 'Rua', 'Número', 'Bairro', 'Cidade', 'Estado', 'CEP', 'Latitude', 'Longitude']
     df_plan = df_plan[plan_cols].copy()
     df_plan['Latitude'] = df_plan['Latitude'].astype(float)
     df_plan['Longitude'] = df_plan['Longitude'].astype(float)
@@ -132,7 +132,7 @@ if st.button("Executar atribuição automática"):
     rotas_merged['Transportadora_Sugerida'] = rotas_merged['Rota'].map(rotas_atribuidas)
 
     st.success("Atribuição realizada com sucesso!")
-    preview_cols = ["Rota", "Shipment", "Cidade", "Bairro", "Rua", "Numero",
+    preview_cols = ["Rota", "Shipment", "Cidade", "Bairro", "Rua", "Número",
                     "Latitude", "Longitude", "Transportadora_Sugerida"]
     st.dataframe(rotas_merged[preview_cols].drop_duplicates().head(100))
 
