@@ -84,21 +84,19 @@ if st.button("Executar atribuição automática"):
     centros_rota = rotas_merged.groupby('Rota')[['Latitude', 'Longitude']].mean().dropna()
 
     # ---- 4. CLUSTERIZAR AS ROTAS NOVAS USANDO MESMA LÓGICA ----
-    if not centros_rota.empty:
-        db_r = DBSCAN(eps=0.06, min_samples=1).fit(centros_rota.values)
-        centros_rota['cluster'] = db_r.labels_
-    else:
-        st.error("Não foi possível calcular centroides das rotas; verifique os dados.")
-        st.stop()
+     # Calcula clusters dos centroides
+    db_r = DBSCAN(eps=0.06, min_samples=1).fit(centros_rota.values)
+    centros_rota['cluster'] = db_r.labels_
 
-    # cluster~rotanome
+    # Cria dict: rota -> cluster
     rota_to_cluster = centros_rota['cluster'].to_dict()
+
+    # Espalha nos dados de shipments
     rotas_merged['cluster'] = rotas_merged['Rota'].map(rota_to_cluster)
 
-    # ---- 5. AFINIDADE HISTÓRICA PARA ROTAS NOVAS POR REGIÃO ----
-    def get_affinity(cluster):
-        return cluster_affinity.get(cluster, None)
-    rotas_merged['Transportadora_afinidade'] = rotas_merged['cluster'].apply(get_affinity)
+    # cluster -> transportadora (afinidade histórica)
+    # cluster_affinity: dict {cluster_number: "Transportadora"}
+    rotas_merged['Transportadora_afinidade'] = rotas_merged['cluster'].map(cluster_affinity)
 
     # ---- 6. ALOCAÇÃO DAS ROTAS NOVAS ----
     cidades_livres = {'ARACAJU', 'NOSSA SENHORA DO SOCORRO'}
