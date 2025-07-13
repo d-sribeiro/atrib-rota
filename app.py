@@ -46,9 +46,16 @@ if st.button("Executar atribuição automática"):
         st.stop()
 
     # ---- 2. CRIAÇÃO DOS CLUSTERS GEOGRÁFICOS HISTÓRICOS ----
-    coords_hist = df_hist[['Latitude', 'Longitude']].dropna().values
-    db = DBSCAN(eps=0.06, min_samples=4).fit(coords_hist)  # ~6km
-    df_hist['cluster'] = db.labels_
+    df_hist_valid = df_hist.dropna(subset=['Latitude', 'Longitude']).copy()
+    coords_hist = df_hist_valid[['Latitude', 'Longitude']].values
+    db = DBSCAN(eps=0.06, min_samples=4).fit(coords_hist)
+    df_hist_valid['cluster'] = db.labels_
+
+    # Junte os dados de volta ao df_hist original (mantendo NaN para linhas que não tinham coordenada)
+    df_hist = df_hist.merge(
+        df_hist_valid[['Shipment', 'cluster']],
+        on='Shipment', how='left'
+    )
 
     # Afinidade de cada cluster: transportadora mais frequente naquela região
     cluster_affinity = (
