@@ -18,22 +18,21 @@ def coluna_aproximada(df, nome_desejado):
     raise KeyError(f"Coluna '{nome_desejado}' não encontrada! Colunas disponíveis: {df.columns.tolist()}")
 
 st.set_page_config(page_title="Atribuição de Rotas por Geolocalização", layout="wide")
-st.title("Atribuição de Rotas por Geolocalização para Transportadoras")
+st.title("Atribuição de rotas por geolocalização para transportadoras")
 
 st.markdown("""
 Faça upload dos dois arquivos necessários e insira os percentuais das transportadoras.
-O sistema usará automaticamente o arquivo `treino.csv` do repositório como base histórica para os clusters de atuação.
 """)
 
 # UPLOAD DOS ARQUIVOS
 col1, col2 = st.columns(2)
 with col1:
-    plan_file = st.file_uploader("Base de IDs (planification)", type="csv")
+    plan_file = st.file_uploader("Base de IDs roteirizados com coordenadas (arquivo do planification)", type="csv")
 with col2:
-    rotas_file = st.file_uploader("Arquivo de Rotas (combined)", type="csv")
+    rotas_file = st.file_uploader("Base de rotas (roadmaps agrupados)", type="csv")
 
 # INSERÇÃO DE PERCENTUAIS
-with st.expander("Inserir percentuais de cada transportadora"):
+with st.expander("Inserir share de rotas de cada transportadora"):
     transportadoras = st.text_input(
         "Nomes separados por vírgula (ex: AC2 Logistica,Log Serviços,MSR,BRJTransportes,WLS CARGO)",
         value="AC2 Logistica,Log Serviços,MSR,BRJTransportes,WLS CARGO"
@@ -42,8 +41,8 @@ with st.expander("Inserir percentuais de cada transportadora"):
     percentuais = {}
     for t in transportadoras:
         percentuais[t] = st.number_input(
-            f"Percentual de {t} (Ex: 0.3 para 30%)",
-            min_value=0.0, max_value=1.0, step=0.01, format="%.3f", value=0.0)
+            f"Share de {t} (Ex: 0.3 para 30%)",
+            min_value=0.0, max_value=1.0, step=0.01, format="%.2f", value=0.0)
 
 if st.button("Executar atribuição automática"):
     try:
@@ -94,38 +93,79 @@ if st.button("Executar atribuição automática"):
     for col in ["Latitude", "Longitude"]:
         df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
 
-    # ---------------------------
-    # CLUSTERIZAÇÃO DOS HISTÓRICOS
-    coords_hist = df_hist[['Latitude', 'Longitude']].dropna()
-    db = DBSCAN(eps=0.06, min_samples=4).fit(coords_hist.values)
-    coords_hist = coords_hist.copy()
-    coords_hist['cluster'] = db.labels_
-    hist_map = df_hist[["Shipment"]].merge(coords_hist[["Latitude", "Longitude", "cluster"]],
-                                           left_index=True, right_index=True, how='left')
-    df_hist = pd.concat([df_hist, hist_map[['cluster']]], axis=1)
-    # Afinidade por cluster do histórico
-    cluster_affinity = (
-        df_hist.groupby('cluster')['Transportadora']
-        .agg(lambda x: x.value_counts().idxmax())
-        .to_dict()
-    )
+## ALTERADO EM 16/07
+
+# 1. Selecione as coordenadas e remova NaNs
+coords_hist = df_hist[['Latitude', 'Longitude']].dropna()
+
+# 2. Converta para radianos
+coords_hist_rad = np.radians(coords_hist[['Latitude', 'Longitude']].values)
+
+# 3. Ajuste do parâmetro eps (em radianos)
+kms_per_radian = 6371.0088
+eps_km = 4
+eps = eps_km / kms_per_radian
+
+# 4. Clusterize usando DBSCAN com métrica Haversine
+db = DBSCAN(eps=eps, min_samples=7, algorithm='ball_tree', metric='haversine').fit(coords_hist_rad)
+
+# 5. Adicione os rótulos
+coords_hist = coords_hist.copy()
+coords_hist['cluster'] = db.labels_
+
+# 6. Junte os resultados
+hist_map = df_hist[["Shipment"]].merge(coords_hist[["Latitude", "Longitude", "cluster"]],
+                                       left_index=True, right_index=True, how='left')
+df_hist = pd.concat([df_hist, hist_map[['cluster']]], axis=1)
+
+# 7. Afinidade por cluster do histórico
+cluster_affinity = (
+    df_hist.groupby('cluster')['Transportadora']
+    .agg(lambda x: x.value_counts().idxmax())
+    .to_dict()
+)
 
     # ----------  NOVOS DADOS PARA ATRIBUIÇÃO -----------
     # Combine rotas <-> plan
     df_comb = df_rotas.merge(df_plan, on="Shipment", how="left")
-    # Ignora linhas sem Latitude/Longitude (não roteáveis)
+    # Ignora linhas sem Latitude/Longitude
     df_comb = df_comb.dropna(subset=['Latitude', 'Longitude'])
 
-    # Calcula centroides por rota (média das coordenadas)
-    centros_rota = df_comb.groupby('Rota')[['Latitude', 'Longitude']].mean()
+## ALTERADO EM 16/07
+
+def geo_centroid(latitudes, longitudes):
+    # Converta para radianos
+    lat_r = np.radians(latitudes)
+    lon_r = np.radians(longitudes)
+    # Converta para x, y, z
+    x = np.cos(lat_r) * np.cos(lon_r)
+    y = np.cos(lat_r) * np.sin(lon_r)
+    z = np.sin(lat_r)
+    # Média
+    x_m = x.mean()
+    y_m = y.mean()
+    z_m = z.mean()
+    # Volte para lat/lon
+    lon_centroid = np.arctan2(y_m, x_m)
+    hyp = np.sqrt(x_m**2 + y_m**2)
+    lat_centroid = np.arctan2(z_m, hyp)
+    # Converta para graus
+    return np.degrees(lat_centroid), np.degrees(lon_centroid)
+
+# Use groupby e apply para cada grupo
+centros_rota = df_comb.groupby('Rota').apply(
+    lambda g: pd.Series(geo_centroid(g['Latitude'].values, g['Longitude'].values),
+                        index=['Latitude','Longitude'])
+)
 
     # Clusterização dos centroides das rotas
-    db_r = DBSCAN(eps=0.06, min_samples=1).fit(centros_rota.values)
+    db_r = DBSCAN(eps=0.000628, min_samples=7).fit(centros_rota.values)
     centros_rota = centros_rota.copy()
     centros_rota['cluster'] = db_r.labels_
     rota_to_cluster = centros_rota['cluster'].to_dict()
 
     df_comb['cluster'] = df_comb['Rota'].map(rota_to_cluster)
+
     # Afinidade aprendida
     def get_affinity(cluster):
         return cluster_affinity.get(cluster, None)
@@ -155,14 +195,19 @@ if st.button("Executar atribuição automática"):
         rotas_atribuidas[rota] = transp
         cotas[transp] += 1
 
-    df_comb['Transportadora_Sugerida'] = df_comb['Rota'].map(rotas_atribuidas)
+## ALTERAÇÃO EM 16/07
 
-    st.success("Atribuição realizada com sucesso!")
-    preview_cols = ["Rota", "Shipment", "Cidade", "Bairro", "Rua", "Número", "Latitude", "Longitude", "Transportadora_Sugerida"]
-    st.dataframe(df_comb[preview_cols].drop_duplicates().head(100))
 
-    st.download_button(
-        "Baixar atribuição CSV",
-        df_comb.to_csv(index=False),
-        "rotas_atribuidas.csv"
-    )
+df_comb['Transportadora_Sugerida'] = df_comb['Rota'].map(rotas_atribuidas)
+
+st.success("Atribuição concluída com sucesso!")
+preview_cols = ["Rota", "Cidade", "Transportadora_afinidade", "Transportadora_Sugerida"]
+st.dataframe(df_comb[preview_cols].drop_duplicates().head(20))
+
+st.download_button(
+    "Baixar atribuição CSV",
+    df_comb[preview_cols].to_csv(index=False),
+    "rotas_atribuidas.csv"
+)
+
+#### FIM DA ALTERAÇÃO ------
