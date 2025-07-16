@@ -127,9 +127,9 @@ cluster_affinity = (
 
     # ----------  NOVOS DADOS PARA ATRIBUIÇÃO -----------
     # Combine rotas <-> plan
-    df_comb = df_rotas.merge(df_plan, on="Shipment", how="left")
+df_comb = df_rotas.merge(df_plan, on="Shipment", how="left")
     # Ignora linhas sem Latitude/Longitude
-    df_comb = df_comb.dropna(subset=['Latitude', 'Longitude'])
+df_comb = df_comb.dropna(subset=['Latitude', 'Longitude'])
 
 ## ALTERADO EM 16/07
 
