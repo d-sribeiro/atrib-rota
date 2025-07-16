@@ -175,25 +175,25 @@ df_comb['Transportadora_afinidade'] = df_comb['cluster'].apply(get_affinity)
 cidades_livres = {'ARACAJU', 'NOSSA SENHORA DO SOCORRO'}
 df_comb['Cidade_norm'] = df_comb['Cidade'].str.strip().str.upper()
 
-    total_rotas = df_comb['Rota'].nunique()
-    cotas = {t: 0 for t in percentuais}
-    rotas_atribuidas = {}
-    rotas_unicas = df_comb[['Rota', 'Cidade_norm', 'cluster', 'Transportadora_afinidade']].drop_duplicates()
+total_rotas = df_comb['Rota'].nunique()
+cotas = {t: 0 for t in percentuais}
+rotas_atribuidas = {}
+rotas_unicas = df_comb[['Rota', 'Cidade_norm', 'cluster', 'Transportadora_afinidade']].drop_duplicates()
 
-    for _, row in rotas_unicas.iterrows():
-        rota = row['Rota']
-        cidade = row['Cidade_norm']
-        affin = row['Transportadora_afinidade']
-        if cidade in cidades_livres:
-            difs = {t: (cotas[t] / total_rotas) - percentuais[t] for t in percentuais}
-            transp = min(difs, key=lambda k: difs[k])
-        elif affin in cotas and cotas[affin]/total_rotas < percentuais[affin]:
-            transp = affin
-        else:
-            difs = {t: (cotas[t] / total_rotas) - percentuais[t] for t in percentuais}
-            transp = min(difs, key=lambda k: difs[k])
-        rotas_atribuidas[rota] = transp
-        cotas[transp] += 1
+for _, row in rotas_unicas.iterrows():
+    rota = row['Rota']
+    cidade = row['Cidade_norm']
+    affin = row['Transportadora_afinidade']
+    if cidade in cidades_livres:
+        difs = {t: (cotas[t] / total_rotas) - percentuais[t] for t in percentuais}
+        transp = min(difs, key=lambda k: difs[k])
+    elif affin in cotas and cotas[affin]/total_rotas < percentuais[affin]:
+        transp = affin
+    else:
+        difs = {t: (cotas[t] / total_rotas) - percentuais[t] for t in percentuais}
+        transp = min(difs, key=lambda k: difs[k])
+    rotas_atribuidas[rota] = transp
+    cotas[transp] += 1
 
 ## ALTERAÇÃO EM 16/07
 
