@@ -159,21 +159,21 @@ centros_rota = df_comb.groupby('Rota').apply(
 )
 
     # Clusterização dos centroides das rotas
-    db_r = DBSCAN(eps=0.000628, min_samples=7).fit(centros_rota.values)
-    centros_rota = centros_rota.copy()
-    centros_rota['cluster'] = db_r.labels_
-    rota_to_cluster = centros_rota['cluster'].to_dict()
+db_r = DBSCAN(eps=0.000628, min_samples=7).fit(centros_rota.values)
+centros_rota = centros_rota.copy()
+centros_rota['cluster'] = db_r.labels_
+rota_to_cluster = centros_rota['cluster'].to_dict()
 
-    df_comb['cluster'] = df_comb['Rota'].map(rota_to_cluster)
+df_comb['cluster'] = df_comb['Rota'].map(rota_to_cluster)
 
     # Afinidade aprendida
-    def get_affinity(cluster):
-        return cluster_affinity.get(cluster, None)
-    df_comb['Transportadora_afinidade'] = df_comb['cluster'].apply(get_affinity)
+def get_affinity(cluster):
+    return cluster_affinity.get(cluster, None)
+df_comb['Transportadora_afinidade'] = df_comb['cluster'].apply(get_affinity)
 
     # Cidades livres para atuação geral
-    cidades_livres = {'ARACAJU', 'NOSSA SENHORA DO SOCORRO'}
-    df_comb['Cidade_norm'] = df_comb['Cidade'].str.strip().str.upper()
+cidades_livres = {'ARACAJU', 'NOSSA SENHORA DO SOCORRO'}
+df_comb['Cidade_norm'] = df_comb['Cidade'].str.strip().str.upper()
 
     total_rotas = df_comb['Rota'].nunique()
     cotas = {t: 0 for t in percentuais}
