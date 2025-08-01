@@ -96,10 +96,10 @@ if st.button("Executar atribuição automática"):
 ## ALTERADO EM 16/07
 
 # 1. Selecione as coordenadas e remova NaNs
-coords_hist = df_hist[['Latitude', 'Longitude']].dropna()
+    coords_hist = df_hist['Latitude', 'Longitude'].dropna()
 
 # 2. Converta para radianos
-coords_hist_rad = np.radians(coords_hist[['Latitude', 'Longitude']].values)
+    coords_hist_rad = np.radians(coords_hist[['Latitude', 'Longitude']].values)
 
 # 3. Ajuste do parâmetro eps (em radianos)
 kms_per_radian = 6371.0088
@@ -211,6 +211,7 @@ st.download_button(
 )
 
 #### FIM DA ALTERAÇÃO ------
+
 
 
 
