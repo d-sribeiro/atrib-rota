@@ -42,8 +42,7 @@ with st.expander("Inserir share de rotas de cada transportadora"):
     for t in transportadoras:
         percentuais[t] = st.number_input(
             f"Share de {t} (Ex: 0.3 para 30%)",
-            min_value=0.0, max_value=1.0, step=0.01, format="%.2f", value=0.0
-        )
+            min_value=0.0, max_value=1.0, step=0.01, format="%.2f", value=0.0)
 
 if st.button("Executar atribuição automática"):
     try:
@@ -66,85 +65,100 @@ if st.button("Executar atribuição automática"):
     col_lat = coluna_aproximada(df_plan, "Latitude")
     col_lon = coluna_aproximada(df_plan, "Longitude")
 
+    # Dicionário: shipment->dados endereço
     plan_cols = [col_shipment, col_rua, col_numero, col_bairro, col_cidade, col_estado, col_cep, col_lat, col_lon]
     df_plan = df_plan[plan_cols].copy()
-    df_plan.rename(columns={
-        col_shipment: "Shipment",
-        col_rua: "Rua",
-        col_numero: "Número",
-        col_bairro: "Bairro",
-        col_cidade: "Cidade",
-        col_estado: "Estado",
-        col_cep: "CEP",
-        col_lat: "Latitude",
-        col_lon: "Longitude"
-    }, inplace=True)
+    df_plan.rename(columns={col_shipment: "Shipment",
+                            col_rua: "Rua",
+                            col_numero: "Número",
+                            col_bairro: "Bairro",
+                            col_cidade: "Cidade",
+                            col_estado: "Estado",
+                            col_cep: "CEP",
+                            col_lat: "Latitude",
+                            col_lon: "Longitude"}, inplace=True)
 
+    # Converte latitude e longitude
     df_plan['Latitude'] = pd.to_numeric(df_plan['Latitude'], errors='coerce')
     df_plan['Longitude'] = pd.to_numeric(df_plan['Longitude'], errors='coerce')
 
-    # Para rotas
+    # Para rotas, shipment e rota
     col_ship_comb = coluna_aproximada(df_rotas, "Shipment")
     col_rota_comb = coluna_aproximada(df_rotas, "Rota")
     df_rotas = df_rotas[[col_ship_comb, col_rota_comb]].copy()
     df_rotas.rename(columns={col_ship_comb: "Shipment", col_rota_comb: "Rota"}, inplace=True)
 
-    # Para treino
+    # --- AJUSTE DOS HISTÓRICOS ---
+    # Para treino, que já deve ter nomes corretos!
     for col in ["Latitude", "Longitude"]:
         df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
 
-    # 1. Selecione as coordenadas e remova NaNs
-    coords_hist = df_hist[['Latitude', 'Longitude']].dropna()
+## ALTERADO EM 16/07
 
-    # 2. Converta para radianos
-    coords_hist_rad = np.radians(coords_hist[['Latitude', 'Longitude']].values)
+# 1. Selecione as coordenadas e remova NaNs
+coords_hist = df_hist[['Latitude', 'Longitude']].dropna()
 
-    # 3. Ajuste do parâmetro eps (em radianos)
-    kms_per_radian = 6371.0088
-    eps_km = 4
-    eps = eps_km / kms_per_radian
+# 2. Converta para radianos
+coords_hist_rad = np.radians(coords_hist[['Latitude', 'Longitude']].values)
 
-    # 4. Clusterize usando DBSCAN com métrica Haversine
-    db = DBSCAN(eps=eps, min_samples=7, algorithm='ball_tree', metric='haversine').fit(coords_hist_rad)
-    coords_hist = coords_hist.copy()
-    coords_hist['cluster'] = db.labels_
+# 3. Ajuste do parâmetro eps (em radianos)
+kms_per_radian = 6371.0088
+eps_km = 4
+eps = eps_km / kms_per_radian
 
-    # 5. Junte os resultados
-    hist_map = df_hist[["Shipment"]].merge(coords_hist[["Latitude", "Longitude", "cluster"]],
-                                           left_index=True, right_index=True, how='left')
-    df_hist = pd.concat([df_hist, hist_map[['cluster']]], axis=1)
+# 4. Clusterize usando DBSCAN com métrica Haversine
+db = DBSCAN(eps=eps, min_samples=7, algorithm='ball_tree', metric='haversine').fit(coords_hist_rad)
 
-    # 6. Afinidade por cluster do histórico
-    cluster_affinity = (
-        df_hist.groupby('cluster')['Transportadora']
-        .agg(lambda x: x.value_counts().idxmax())
-        .to_dict()
-    )
+# 5. Adicione os rótulos
+coords_hist = coords_hist.copy()
+coords_hist['cluster'] = db.labels_
+
+# 6. Junte os resultados
+hist_map = df_hist[["Shipment"]].merge(coords_hist[["Latitude", "Longitude", "cluster"]],
+                                       left_index=True, right_index=True, how='left')
+df_hist = pd.concat([df_hist, hist_map[['cluster']]], axis=1)
+
+# 7. Afinidade por cluster do histórico
+cluster_affinity = (
+    df_hist.groupby('cluster')['Transportadora']
+    .agg(lambda x: x.value_counts().idxmax())
+    .to_dict()
+)
 
     # ----------  NOVOS DADOS PARA ATRIBUIÇÃO -----------
+    # Combine rotas <-> plan
     df_comb = df_rotas.merge(df_plan, on="Shipment", how="left")
+    # Ignora linhas sem Latitude/Longitude
     df_comb = df_comb.dropna(subset=['Latitude', 'Longitude'])
 
-    def geo_centroid(latitudes, longitudes):
-        lat_r = np.radians(latitudes)
-        lon_r = np.radians(longitudes)
-        x = np.cos(lat_r) * np.cos(lon_r)
-        y = np.cos(lat_r) * np.sin(lon_r)
-        z = np.sin(lat_r)
-        x_m = x.mean()
-        y_m = y.mean()
-        z_m = z.mean()
-        lon_centroid = np.arctan2(y_m, x_m)
-        hyp = np.sqrt(x_m ** 2 + y_m ** 2)
-        lat_centroid = np.arctan2(z_m, hyp)
-        return np.degrees(lat_centroid), np.degrees(lon_centroid)
+## ALTERADO EM 16/07
 
-    # Groupby para cada grupo de 'Rota'
-    centros_rota = df_comb.groupby('Rota').apply(
-        lambda g: pd.Series(geo_centroid(g['Latitude'].values, g['Longitude'].values),
-                            index=['Latitude', 'Longitude'])
-    )
+def geo_centroid(latitudes, longitudes):
+    # Converta para radianos
+    lat_r = np.radians(latitudes)
+    lon_r = np.radians(longitudes)
+    # Converta para x, y, z
+    x = np.cos(lat_r) * np.cos(lon_r)
+    y = np.cos(lat_r) * np.sin(lon_r)
+    z = np.sin(lat_r)
+    # Média
+    x_m = x.mean()
+    y_m = y.mean()
+    z_m = z.mean()
+    # Volte para lat/lon
+    lon_centroid = np.arctan2(y_m, x_m)
+    hyp = np.sqrt(x_m**2 + y_m**2)
+    lat_centroid = np.arctan2(z_m, hyp)
+    # Converta para graus
+    return np.degrees(lat_centroid), np.degrees(lon_centroid)
 
+# Use groupby e apply para cada grupo
+centros_rota = df_comb.groupby('Rota').apply(
+    lambda g: pd.Series(geo_centroid(g['Latitude'].values, g['Longitude'].values),
+                        index=['Latitude','Longitude'])
+)
+
+    # Clusterização dos centroides das rotas
     db_r = DBSCAN(eps=0.000628, min_samples=7).fit(centros_rota.values)
     centros_rota = centros_rota.copy()
     centros_rota['cluster'] = db_r.labels_
@@ -173,7 +187,7 @@ if st.button("Executar atribuição automática"):
         if cidade in cidades_livres:
             difs = {t: (cotas[t] / total_rotas) - percentuais[t] for t in percentuais}
             transp = min(difs, key=lambda k: difs[k])
-        elif affin in cotas and cotas[affin] / total_rotas < percentuais[affin]:
+        elif affin in cotas and cotas[affin]/total_rotas < percentuais[affin]:
             transp = affin
         else:
             difs = {t: (cotas[t] / total_rotas) - percentuais[t] for t in percentuais}
@@ -181,14 +195,19 @@ if st.button("Executar atribuição automática"):
         rotas_atribuidas[rota] = transp
         cotas[transp] += 1
 
-    df_comb['Transportadora_Sugerida'] = df_comb['Rota'].map(rotas_atribuidas)
+## ALTERAÇÃO EM 16/07
 
-    st.success("Atribuição concluída com sucesso!")
-    preview_cols = ["Rota", "Cidade", "Transportadora_afinidade", "Transportadora_Sugerida"]
-    st.dataframe(df_comb[preview_cols].drop_duplicates().head(20))
 
-    st.download_button(
-        "Baixar atribuição CSV",
-        df_comb[preview_cols].to_csv(index=False),
-        "rotas_atribuidas.csv"
-    )
+df_comb['Transportadora_Sugerida'] = df_comb['Rota'].map(rotas_atribuidas)
+
+st.success("Atribuição concluída com sucesso!")
+preview_cols = ["Rota", "Cidade", "Transportadora_afinidade", "Transportadora_Sugerida"]
+st.dataframe(df_comb[preview_cols].drop_duplicates().head(20))
+
+st.download_button(
+    "Baixar atribuição CSV",
+    df_comb[preview_cols].to_csv(index=False),
+    "rotas_atribuidas.csv"
+)
+
+#### FIM DA ALTERAÇÃO ------
