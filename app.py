@@ -107,11 +107,11 @@ eps_km = 4
 eps = eps_km / kms_per_radian
 
 # 4. Clusterize usando DBSCAN com métrica Haversine
-db = DBSCAN(eps=eps, min_samples=7, algorithm='ball_tree', metric='haversine').fit(coords_hist_rad)
+    db = DBSCAN(eps=eps, min_samples=7, algorithm='ball_tree', metric='haversine').fit(coords_hist_rad)
 
 # 5. Adicione os rótulos
-coords_hist = coords_hist.copy()
-coords_hist['cluster'] = db.labels_
+    coords_hist = coords_hist.copy()
+    coords_hist['cluster'] = db.labels_
 
 # 6. Junte os resultados
 hist_map = df_hist[["Shipment"]].merge(coords_hist[["Latitude", "Longitude", "cluster"]],
@@ -211,6 +211,7 @@ st.download_button(
 )
 
 #### FIM DA ALTERAÇÃO ------
+
 
 
 
