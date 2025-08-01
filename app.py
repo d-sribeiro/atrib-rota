@@ -96,7 +96,7 @@ if st.button("Executar atribuição automática"):
 ## ALTERADO EM 16/07
 
 # 1. Selecione as coordenadas e remova NaNs
-coords_hist = df_hist[['Latitude', 'Longitude']].dropna()
+coords_hist = df_hist['Latitude', 'Longitude'].dropna()
 
 # 2. Converta para radianos
 coords_hist_rad = np.radians(coords_hist[['Latitude', 'Longitude']].values)
@@ -211,5 +211,6 @@ st.download_button(
 )
 
 #### FIM DA ALTERAÇÃO ------
+
 
 
